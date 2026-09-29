@@ -1,0 +1,28 @@
+menu "Meter OCR"
+
+    config METER_WIFI_SSID
+        string "WiFi SSID"
+        default ""
+
+    config METER_WIFI_PASSWORD
+        string "WiFi password"
+        default ""
+
+    config METER_MQTT_URI
+        string "MQTT broker URI (empty disables MQTT)"
+        default ""
+        help
+            Example: mqtt://user:pass@192.168.1.10:1883
+
+    config METER_MQTT_TOPIC
+        string "MQTT topic for readings"
+        default "meter/reading"
+
+    config METER_FLASH_GPIO
+        int "Flash LED GPIO (-1 = none)"
+        range -1 48
+        default -1
+        help
+            Used only when the display type is LCD. LED displays are read without flash.
+
+endmenu

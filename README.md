@@ -1,0 +1,75 @@
+# meter-ocr
+
+Reads 7-segment LCD and LED meter displays on an ESP32-S3 (8 MB PSRAM) with a fixed camera.
+Digit positions are marked once per install on the device's setup page. Each digit is
+classified by a small int8 CNN (about 40 KB) running on TensorFlow Lite Micro.
+
+```
+training/   Python: synthetic data, training, int8 export, crop collection
+firmware/   ESP-IDF project: camera, alignment, inference, plausibility checks, web setup, MQTT
+data/real/  Labeled real crops, one folder per class (0-9, blank, unsure)
+```
+
+## How a reading works
+
+1. Capture 3 grayscale SVGA frames, 200 ms apart. The flash is used only for LCD displays.
+2. Find the anchor patch within ±16 px and shift all digit boxes by that offset.
+3. Crop each digit box, resize it to 20×32, and contrast-stretch it.
+4. Classify each crop into `0`-`9`, `blank`, or `unsure`, and average the probabilities over the frames.
+5. Reject the reading if any digit is `unsure` or below the confidence threshold, if a blank
+   comes after a digit, if the value is lower than the last accepted one, or if it rises
+   faster than the configured max rate.
+6. Publish JSON to MQTT and keep the result for the web API.
+
+A rejected value that comes back 5 times in a row is accepted with status `reset`.
+This covers a meter swap, or a wrong value that was accepted earlier.
+
+## Training
+
+Needs Python 3.12 and [uv](https://docs.astral.sh/uv/).
+
+```sh
+cd training
+uv sync
+uv run python synth.py --preview preview.png   # look at synthetic samples
+uv run python train.py                          # train, export int8, write firmware/main/model_data.cc
+```
+
+`train.py` also trains on the real crops in `data/real/<class>/*.png` and reports their
+accuracy separately. The preprocessing in `training/common.py` must stay in sync with
+`firmware/main/reader.cc` (`kImgW`, `kImgH`, `kMinRange`, class order).
+
+## Firmware
+
+Needs ESP-IDF 5.3 or later.
+
+```sh
+cd firmware
+idf.py set-target esp32s3
+idf.py menuconfig        # Meter OCR: WiFi, MQTT URI/topic, flash LED GPIO
+idf.py build flash monitor
+```
+
+Check these against your board before flashing:
+
+- **Camera pins** in `main/camera.cc`. They are set for the ESP32-S3-EYE and the Freenove ESP32-S3-WROOM CAM.
+- **PSRAM mode** in `sdkconfig.defaults`. It is octal for N8R8 and N16R8 modules. Change it to quad for R2 modules.
+- **Flash size** in `sdkconfig.defaults`. It is 8 MB.
+
+## Install
+
+1. Mount the camera and power the device. The log prints `setup page: http://<ip>/`.
+2. Open the setup page. Draw one box per digit, then draw an anchor on a fixed feature
+   near the display. Set the display type, decimal places, and max rate. Save.
+3. Reload **Last reading** to see the crops the model gets and its prediction for each one.
+
+## Improving accuracy with real data
+
+```sh
+cd training
+uv run python collect.py --host <device-ip>          # saves failed or low-confidence readings
+uv run python collect.py --host <device-ip> --all    # saves every reading
+```
+
+Crops are saved to `data/unlabeled/<predicted class>/`. Move any wrong crops to the right
+folder, move the reviewed files into `data/real/<class>/`, then run `train.py` again and reflash.

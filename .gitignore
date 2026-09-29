@@ -1,0 +1,13 @@
+# Training
+training/.venv/
+training/out/
+training/preview.png
+__pycache__/
+data/unlabeled/
+
+# ESP-IDF
+firmware/build/
+firmware/managed_components/
+firmware/dependencies.lock
+firmware/sdkconfig
+firmware/sdkconfig.old

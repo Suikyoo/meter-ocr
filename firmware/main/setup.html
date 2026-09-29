@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meter setup</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 16px; background: #f4f4f4; color: #222; }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  #stage { position: relative; display: inline-block; max-width: 100%; touch-action: none; }
+  #stage img { display: block; max-width: 100%; }
+  #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+  fieldset { border: 1px solid #ccc; margin: 12px 0; padding: 8px 12px; }
+  label { display: inline-block; margin: 4px 16px 4px 0; }
+  input[type=number] { width: 80px; }
+  button { padding: 6px 12px; margin: 4px 4px 4px 0; }
+  button.active { background: #2b6cb0; color: #fff; }
+  #status { margin-left: 8px; }
+  #crops canvas { image-rendering: pixelated; width: 40px; height: 64px; margin: 2px; border: 1px solid #999; }
+  #crops div { display: inline-block; text-align: center; font-family: monospace; }
+</style>
+</head>
+<body>
+<h1>Meter setup</h1>
+
+<div>
+  <button id="tool-digit" class="active">Draw digit box</button>
+  <button id="tool-anchor">Draw anchor</button>
+  <button id="undo">Remove last digit</button>
+  <button id="clear">Clear digits</button>
+  <button id="refresh">Refresh photo</button>
+</div>
+<p>Draw one box per digit, tight around the digit. Draw the anchor (max 96×96) on a
+fixed, high-contrast feature near the digits, such as a printed label or the display frame edge.</p>
+
+<div id="stage"><img id="photo" alt="camera"><canvas id="overlay"></canvas></div>
+
+<fieldset>
+  <label>Display
+    <select id="display"><option value="lcd">LCD (uses flash)</option><option value="led">LED / backlit (no flash)</option></select>
+  </label>
+  <label>Decimal places <input type="number" id="decimals" min="0" value="0"></label>
+  <label>Max rate per hour <input type="number" id="max_rate_per_hour" min="0" step="any" value="0"> (0 = off)</label>
+  <label>Min confidence <input type="number" id="min_confidence" min="0" max="1" step="0.01" value="0.8"></label>
+  <label>Interval (s) <input type="number" id="interval_s" min="5" value="60"></label>
+</fieldset>
+
+<button id="save">Save</button><span id="status"></span>
+
+<fieldset>
+  <legend>Last reading</legend>
+  <div id="reading">-</div>
+  <div id="crops"></div>
+  <button id="reload-reading">Reload</button>
+</fieldset>
+
+<script>
+const $ = id => document.getElementById(id);
+const img = $('photo'), cv = $('overlay'), ctx = cv.getContext('2d');
+let digits = [], anchor = null, tool = 'digit', drag = null;
+
+function setTool(t) {
+  tool = t;
+  $('tool-digit').classList.toggle('active', t === 'digit');
+  $('tool-anchor').classList.toggle('active', t === 'anchor');
+}
+
+function draw() {
+  cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+  ctx.lineWidth = Math.max(1, cv.width / 400);
+  ctx.font = `${Math.round(cv.width / 40)}px sans-serif`;
+  const box = (r, color, label) => {
+    ctx.strokeStyle = ctx.fillStyle = color;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    if (label) ctx.fillText(label, r.x, r.y - 4);
+  };
+  sortDigits();
+  digits.forEach((r, i) => box(r, '#00e060', String(i + 1)));
+  if (anchor) box(anchor, '#ff8000', 'anchor');
+  if (drag) box(drag.rect, '#ffffff');
+}
+
+// Most significant digit first, i.e. left to right.
+function sortDigits() { digits.sort((a, b) => a.x - b.x); }
+
+function toImage(e) {
+  const b = cv.getBoundingClientRect();
+  return {
+    x: Math.round((e.clientX - b.left) * img.naturalWidth / b.width),
+    y: Math.round((e.clientY - b.top) * img.naturalHeight / b.height),
+  };
+}
+
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  const p = toImage(e);
+  drag = { start: p, rect: { x: p.x, y: p.y, w: 0, h: 0 } };
+});
+cv.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const p = toImage(e), s = drag.start;
+  drag.rect = { x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) };
+  if (tool === 'anchor') { drag.rect.w = Math.min(drag.rect.w, 96); drag.rect.h = Math.min(drag.rect.h, 96); }
+  draw();
+});
+cv.addEventListener('pointerup', () => {
+  if (!drag) return;
+  const r = drag.rect;
+  drag = null;
+  if (r.w >= 4 && r.h >= 4) {
+    if (tool === 'digit') digits.push(r); else anchor = r;
+  }
+  draw();
+});
+
+$('tool-digit').onclick = () => setTool('digit');
+$('tool-anchor').onclick = () => setTool('anchor');
+$('undo').onclick = () => { digits.pop(); draw(); };
+$('clear').onclick = () => { digits = []; draw(); };
+$('refresh').onclick = () => { img.src = '/snapshot.jpg?t=' + Date.now(); };
+img.onload = draw;
+
+async function loadConfig() {
+  const c = await (await fetch('/api/config')).json();
+  digits = c.digits || [];
+  anchor = c.anchor;
+  $('display').value = c.display;
+  for (const k of ['decimals', 'max_rate_per_hour', 'min_confidence', 'interval_s']) $(k).value = c[k];
+  draw();
+}
+
+$('save').onclick = async () => {
+  sortDigits();
+  const body = {
+    display: $('display').value,
+    digits, anchor,
+    decimals: +$('decimals').value,
+    max_rate_per_hour: +$('max_rate_per_hour').value,
+    min_confidence: +$('min_confidence').value,
+    interval_s: +$('interval_s').value,
+  };
+  $('status').textContent = 'saving...';
+  const res = await fetch('/api/config', { method: 'POST', body: JSON.stringify(body) });
+  $('status').textContent = res.ok ? 'saved' : 'error: ' + await res.text();
+};
+
+const CLASSES = ['0','1','2','3','4','5','6','7','8','9','_','?'];
+
+async function loadReading() {
+  const r = await (await fetch('/api/crops')).json();
+  $('reading').textContent = `${r.status}  raw=${r.raw}` + (r.ok ? `  value=${r.value}` : '') +
+    `  min_conf=${(+r.min_conf).toFixed(2)}  offset=(${r.dx},${r.dy})`;
+  const box = $('crops');
+  box.innerHTML = '';
+  for (const d of r.digits || []) {
+    const c = document.createElement('canvas');
+    c.width = r.width; c.height = r.height;
+    const bytes = Uint8Array.from(atob(d.pixels), ch => ch.charCodeAt(0));
+    const data = c.getContext('2d').createImageData(r.width, r.height);
+    bytes.forEach((v, i) => data.data.set([v, v, v, 255], i * 4));
+    c.getContext('2d').putImageData(data, 0, 0);
+    const wrap = document.createElement('div');
+    wrap.append(c, document.createElement('br'), `${CLASSES[d.cls]} ${(d.conf * 100).toFixed(0)}%`);
+    box.append(wrap);
+  }
+}
+$('reload-reading').onclick = loadReading;
+
+loadConfig().then(() => $('refresh').onclick()).then(loadReading);
+</script>
+</body>
+</html>
