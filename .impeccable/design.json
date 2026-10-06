@@ -1,0 +1,36 @@
+{
+  "name": "Meters",
+  "direction": "Printed plate",
+  "mode": "operate",
+  "tokens": {
+    "light": {
+      "paper": "#e9eee6",
+      "plateBg": "#f6f8f3",
+      "ink": "#1b2320",
+      "inkSoft": "#56615b",
+      "rule": "#bfc9bf",
+      "plateInk": "#2c3e8f",
+      "vermilion": "#b8402a",
+      "online": "#2f6b3a",
+      "warnBg": "#f7e3d5",
+      "warnText": "#7a2612",
+      "errorText": "#8a2118"
+    },
+    "dark": {
+      "paper": "#141a17",
+      "plateBg": "#1b231f",
+      "ink": "#e6ede7",
+      "inkSoft": "#9fb0a4",
+      "rule": "#33403a",
+      "plateInk": "#8fa2ff",
+      "vermilion": "#ef7a5e",
+      "online": "#8fd19e",
+      "warnBg": "#3a2519",
+      "warnText": "#f2b49c",
+      "errorText": "#f2a79c"
+    }
+  },
+  "radius": 0,
+  "font": { "family": "Literata", "weights": [400, 500, 600, 700], "source": "google-fonts", "numerals": "lining tabular" },
+  "source": "server/frontend/src/app.css"
+}

@@ -53,8 +53,22 @@
   <div class="banner" role="alert">Couldn't load. <button onclick={load}>Retry</button></div>
 {/if}
 <main>
-  {#if device?.ip}
-    <a class="setup" href="http://{device.ip}/" target="_blank" rel="noopener">Setup page ↗</a>
+  {#if data}
+    <section class="plate">
+      <p class="big">{formatKwh(data.total)}<span class="unit">{data.unit}</span></p>
+      <p class="muted">used {periodNoun(data.period)}</p>
+      {#if data.differential}
+        <p class="diff">{formatKwh(data.differential.start_value)} → {formatKwh(data.differential.end_value)} {data.unit}</p>
+      {/if}
+      {#if data.has_reset}
+        <p class="note">Meter reset in this period. Total excludes the jump.</p>
+      {/if}
+      {#if device?.ip}
+        <a class="setup" href="http://{device.ip}/" target="_blank" rel="noopener">Setup page ↗</a>
+      {/if}
+    </section>
+  {:else if !error}
+    <div class="skeleton hero-block"></div>
   {/if}
 
   <div class="segments" role="tablist" aria-label="Partition">
@@ -71,17 +85,6 @@
       <span>{windowLabel(data.period, data.window_start, data.window_end)}</span>
       <button aria-label="Next" disabled={!data.next_anchor} onclick={() => (anchor = data.next_anchor)}>›</button>
     </nav>
-
-    <section class="total">
-      <p class="big">{formatKwh(data.total)} <span class="unit">{data.unit}</span></p>
-      <p class="muted">used {periodNoun(data.period)}</p>
-      {#if data.differential}
-        <p class="diff">{formatKwh(data.differential.start_value)} → {formatKwh(data.differential.end_value)} {data.unit}</p>
-      {/if}
-      {#if data.has_reset}
-        <p class="note">Meter reset in this period. Total excludes the jump.</p>
-      {/if}
-    </section>
 
     <BarChart labels={chart.labels} titles={chart.titles} values={chart.values} unit={data.unit} />
 

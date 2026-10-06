@@ -3,6 +3,7 @@
   import { formatKwh } from './format.js'
 
   Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip)
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily
 
   let { labels, titles, values, unit } = $props()
   let canvas
@@ -13,7 +14,7 @@
     const color = (name) => css.getPropertyValue(name).trim()
     chart = new Chart(canvas, {
       type: 'bar',
-      data: { labels: [], datasets: [{ data: [], backgroundColor: color('--accent'), borderRadius: 3, maxBarThickness: 32 }] },
+      data: { labels: [], datasets: [{ data: [], backgroundColor: color('--plate-ink'), borderRadius: 0, maxBarThickness: 32 }] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -28,8 +29,8 @@
           },
         },
         scales: {
-          x: { grid: { display: false }, ticks: { color: color('--muted'), maxRotation: 0, autoSkip: true } },
-          y: { beginAtZero: true, grid: { color: color('--line') }, ticks: { color: color('--muted') } },
+          x: { grid: { display: false }, border: { color: color('--ink') }, ticks: { color: color('--ink-soft'), maxRotation: 0, autoSkip: true } },
+          y: { beginAtZero: true, border: { display: false }, grid: { color: color('--rule') }, ticks: { color: color('--ink-soft') } },
         },
       },
     })
