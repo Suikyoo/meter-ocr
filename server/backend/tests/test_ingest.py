@@ -1,9 +1,10 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 
-from app import db
-from app.ingest import handle_message
+from app import db, ingest
+from app.ingest import MqttIngest, handle_message, parse_broker_url
 
 T0 = 1_800_000_000  # an exact hour start (500000 * 3600)
 
@@ -145,3 +146,26 @@ def test_rebuild_rollup_matches_live_ingest(conn):
 
     assert hourly(conn) == live_hourly
     assert tuple(device(conn, "m1")) == live_device
+
+
+def test_parse_broker_url():
+    assert parse_broker_url("mqtt://user:p%40ss@10.0.0.2:1884") == ("10.0.0.2", 1884, "user", "p@ss")
+    assert parse_broker_url("mqtt://mosquitto") == ("mosquitto", 1883, None, None)
+
+
+def test_on_message_stores_reading(tmp_path):
+    path = str(tmp_path / "test.db")
+    ing = MqttIngest("mqtt://localhost", "meter", path)
+    ing.conn = db.connect(path)
+    ing._on_message(None, None, SimpleNamespace(topic="meter/m1/reading", payload=reading(1.0)))
+    assert device(ing.conn, "m1")["last_value"] == 1.0
+    ing.conn.close()
+
+
+def test_on_message_survives_handler_error(tmp_path, monkeypatch):
+    def boom(*args):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(ingest, "handle_message", boom)
+    ing = MqttIngest("mqtt://localhost", "meter", str(tmp_path / "test.db"))
+    ing._on_message(None, None, SimpleNamespace(topic="meter/m1/reading", payload=b"{}"))
