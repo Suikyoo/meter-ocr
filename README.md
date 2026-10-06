@@ -7,6 +7,7 @@ classified by a small int8 CNN (about 40 KB) running on TensorFlow Lite Micro.
 ```
 training/   Python: synthetic data, training, int8 export, crop collection
 firmware/   ESP-IDF project: camera, alignment, inference, plausibility checks, web setup, MQTT
+server/     Docker Compose: Mosquitto broker + FastAPI/SQLite service + mobile web app
 data/real/  Labeled real crops, one folder per class (0-9, blank, unsure)
 ```
 
@@ -75,6 +76,41 @@ The prefix is set in menuconfig (default `meter`).
 | `meter/<id>/reading` | no | `{"ok":true,"status":"ok","raw":"0012345","value":1234.5,"min_conf":0.97,"dx":1,"dy":0,"uptime_s":3600}` |
 
 `value` is present only when `ok` is true. `ok` is true for status `ok` and `reset`.
+
+## Server
+
+Needs Docker with Compose.
+
+```sh
+cd server
+docker compose up -d --build
+```
+
+This starts Mosquitto on port 1883 and the web app on http://<host>:8080/. If port 8080 is
+taken, set another one with `APP_PORT=8081 docker compose up -d --build`. Point each device's
+`METER_MQTT_URI` at `mqtt://<host>:1883`. Devices appear in the app on their first status message
+or reading. Set `TZ` in `docker-compose.yml` to your time zone; consumption is bucketed in that zone.
+
+The app stores every reading in SQLite (`app-data` volume) and keeps an hourly consumption
+rollup. Consumption is the sum of increases between accepted readings; a `reset` reading starts a
+new baseline. After changing that rule, rebuild the rollup:
+
+```sh
+docker compose exec app python -m app.cli rebuild-rollup
+```
+
+Development without hardware:
+
+```sh
+cd server/backend
+uv sync
+uv run pytest
+uv run python scripts/fake_meter.py --devices 2     # needs the broker from docker compose
+cd ../frontend
+npm install
+npm test
+npm run dev                                          # proxies /api to localhost:8080
+```
 
 ## Improving accuracy with real data
 
