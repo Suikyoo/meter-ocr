@@ -1,6 +1,7 @@
 """MQTT message parsing and storage."""
 import json
 import logging
+import math
 import os
 import time
 from urllib.parse import unquote, urlparse
@@ -23,16 +24,22 @@ def parse_topic(prefix: str, topic: str) -> tuple[str, str] | None:
 
 
 def _is_number(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+    # json.loads turns 1e999 into inf; a non-finite value would break the JSON API for good.
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
-def handle_message(conn, prefix: str, topic: str, payload: bytes, now: int) -> None:
+def _reject_constant(name: str):
+    raise ValueError(f"non-finite number {name}")
+
+
+def handle_message(conn, prefix: str, topic: str, payload: bytes, now: int,
+                   retained: bool = False) -> None:
     parsed = parse_topic(prefix, topic)
     if parsed is None:
         return
     device_id, kind = parsed
     try:
-        data = json.loads(payload)
+        data = json.loads(payload, parse_constant=_reject_constant)
     except ValueError:
         log.warning("dropping %s: payload is not JSON", topic)
         return
@@ -46,7 +53,7 @@ def handle_message(conn, prefix: str, topic: str, payload: bytes, now: int) -> N
             log.warning("dropping %s: 'online' is not a boolean", topic)
             return
         ip = data.get("ip") if isinstance(data.get("ip"), str) else None
-        db.upsert_status(conn, device_id, online, ip, now)
+        db.upsert_status(conn, device_id, online, ip, now, retained=retained)
         return
 
     status = data.get("status")
@@ -113,6 +120,7 @@ class MqttIngest:
 
     def _on_message(self, client, userdata, msg):
         try:
-            handle_message(self.conn, self.prefix, msg.topic, msg.payload, int(time.time()))
+            handle_message(self.conn, self.prefix, msg.topic, msg.payload, int(time.time()),
+                           retained=bool(getattr(msg, "retain", False)))
         except Exception:
             log.exception("failed to handle message on %s", msg.topic)

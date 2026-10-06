@@ -35,23 +35,29 @@ CREATE TABLE IF NOT EXISTS hourly (
 
 
 def connect(path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(path, check_same_thread=False)
+    # Long busy timeout: ingest waits out a rebuild-rollup holding the write lock instead of
+    # failing with "database is locked" and losing the reading.
+    conn = sqlite3.connect(path, check_same_thread=False, timeout=60)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
     return conn
 
 
-def _touch_device(conn, device_id: str, ts: int) -> None:
+def _touch_device(conn, device_id: str, ts: int, bump_last_seen: bool = True) -> None:
     conn.execute(
         "INSERT INTO devices (id, first_seen, last_seen) VALUES (?, ?, ?) "
-        "ON CONFLICT(id) DO UPDATE SET last_seen = excluded.last_seen",
+        + ("ON CONFLICT(id) DO UPDATE SET last_seen = excluded.last_seen" if bump_last_seen
+           else "ON CONFLICT(id) DO NOTHING"),
         (device_id, ts, ts))
 
 
-def upsert_status(conn, device_id: str, online: bool, ip: str | None, ts: int) -> None:
+def upsert_status(conn, device_id: str, online: bool, ip: str | None, ts: int,
+                  retained: bool = False) -> None:
+    """A retained status is the broker replaying an old message on (re)connect, so it does not
+    count as the device being seen now."""
     with conn:
-        _touch_device(conn, device_id, ts)
+        _touch_device(conn, device_id, ts, bump_last_seen=not retained)
         conn.execute("UPDATE devices SET online = ?, ip = COALESCE(?, ip) WHERE id = ?",
                      (int(online), ip, device_id))
 

@@ -169,3 +169,54 @@ def test_on_message_survives_handler_error(tmp_path, monkeypatch):
     monkeypatch.setattr(ingest, "handle_message", boom)
     ing = MqttIngest("mqtt://localhost", "meter", str(tmp_path / "test.db"))
     ing._on_message(None, None, SimpleNamespace(topic="meter/m1/reading", payload=b"{}"))
+
+
+@pytest.mark.parametrize("payload", [
+    b'{"ok":true,"status":"ok","value":1e999}',
+    b'{"ok":true,"status":"ok","value":Infinity}',
+    b'{"ok":true,"status":"ok","value":-Infinity}',
+    b'{"ok":true,"status":"ok","value":NaN}',
+])
+def test_non_finite_values_are_dropped(conn, payload):
+    handle_message(conn, "meter", "meter/m1/reading", payload, T0)
+    assert count(conn, "readings") == 0
+    assert count(conn, "hourly") == 0
+
+
+def test_retained_status_does_not_bump_last_seen(conn):
+    handle_message(conn, "meter", "meter/m1/status", b'{"online":true,"ip":"10.0.0.5"}', T0)
+    handle_message(conn, "meter", "meter/m1/status", b'{"online":false}', T0 + 60)
+    handle_message(conn, "meter", "meter/m1/status", b'{"online":false}', T0 + 86400,
+                   retained=True)
+    d = device(conn, "m1")
+    assert d["online"] == 0
+    assert d["last_seen"] == T0 + 60
+
+
+def test_retained_status_creates_unknown_device(conn):
+    handle_message(conn, "meter", "meter/m1/status", b'{"online":false}', T0, retained=True)
+    d = device(conn, "m1")
+    assert d["online"] == 0
+    assert d["first_seen"] == T0
+    assert d["last_seen"] == T0
+
+
+def test_on_message_passes_retain_flag(tmp_path):
+    path = str(tmp_path / "test.db")
+    ing = MqttIngest("mqtt://localhost", "meter", path)
+    ing.conn = db.connect(path)
+    ing._on_message(None, None, SimpleNamespace(topic="meter/m1/status", payload=b'{"online":true}',
+                                                retain=False))
+    first = device(ing.conn, "m1")["last_seen"]
+    with ing.conn:
+        ing.conn.execute("UPDATE devices SET last_seen = 1 WHERE id = 'm1'")
+    ing._on_message(None, None, SimpleNamespace(topic="meter/m1/status", payload=b'{"online":false}',
+                                                retain=True))
+    assert first > 1
+    assert device(ing.conn, "m1")["last_seen"] == 1
+    ing.conn.close()
+
+
+def test_connections_wait_for_writer_instead_of_failing(conn):
+    # A long rebuild-rollup holds the write lock; ingest must wait, not drop the reading.
+    assert conn.execute("PRAGMA busy_timeout").fetchone()[0] >= 60_000

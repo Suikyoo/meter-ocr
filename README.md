@@ -93,10 +93,13 @@ or reading. Set `TZ` in `docker-compose.yml` to your time zone; consumption is b
 
 The app stores every reading in SQLite (`app-data` volume) and keeps an hourly consumption
 rollup. Consumption is the sum of increases between accepted readings; a `reset` reading starts a
-new baseline. After changing that rule, rebuild the rollup:
+new baseline. After changing that rule, rebuild the rollup. Ingest waits up to 60 s for the
+rebuild's write lock, so on a large database stop the app first:
 
 ```sh
-docker compose exec app python -m app.cli rebuild-rollup
+docker compose stop app
+docker compose run --rm app python -m app.cli rebuild-rollup
+docker compose start app
 ```
 
 Development without hardware:
