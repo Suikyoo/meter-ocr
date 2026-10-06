@@ -11,3 +11,9 @@ firmware/managed_components/
 firmware/dependencies.lock
 firmware/sdkconfig
 firmware/sdkconfig.old
+
+# Server
+server/backend/.venv/
+server/backend/*.db*
+server/frontend/node_modules/
+server/frontend/dist/
