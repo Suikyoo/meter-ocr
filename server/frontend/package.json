@@ -1,0 +1,21 @@
+{
+  "name": "meter-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "svelte": "^5.57.1",
+    "vite": "^8.3.3",
+    "vitest": "^5.0.3"
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1"
+  }
+}
