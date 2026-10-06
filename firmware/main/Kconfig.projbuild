@@ -14,9 +14,12 @@ menu "Meter OCR"
         help
             Example: mqtt://user:pass@192.168.1.10:1883
 
-    config METER_MQTT_TOPIC
-        string "MQTT topic for readings"
-        default "meter/reading"
+    config METER_MQTT_PREFIX
+        string "MQTT topic prefix"
+        default "meter"
+        help
+            Topics are <prefix>/<device-id>/status and <prefix>/<device-id>/reading.
+            The device ID is "meter-" followed by the WiFi MAC address in hex.
 
     config METER_FLASH_GPIO
         int "Flash LED GPIO (-1 = none)"

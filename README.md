@@ -46,7 +46,7 @@ Needs ESP-IDF 5.3 or later.
 ```sh
 cd firmware
 idf.py set-target esp32s3
-idf.py menuconfig        # Meter OCR: WiFi, MQTT URI/topic, flash LED GPIO
+idf.py menuconfig        # Meter OCR: WiFi, MQTT URI/prefix, flash LED GPIO
 idf.py build flash monitor
 ```
 
@@ -62,6 +62,19 @@ Check these against your board before flashing:
 2. Open the setup page. Draw one box per digit, then draw an anchor on a fixed feature
    near the display. Set the display type, decimal places, and max rate. Save.
 3. Reload **Last reading** to see the crops the model gets and its prediction for each one.
+
+## MQTT
+
+Each device uses the ID `meter-<mac>`, where `<mac>` is its WiFi MAC address in lowercase hex.
+The prefix is set in menuconfig (default `meter`).
+
+| Topic | Retained | Payload |
+|---|---|---|
+| `meter/<id>/status` | yes | `{"online":true,"ip":"192.168.1.42"}`, sent on every connect |
+| `meter/<id>/status` | yes | `{"online":false}`, the last will, sent by the broker about 45 s after the device drops |
+| `meter/<id>/reading` | no | `{"ok":true,"status":"ok","raw":"0012345","value":1234.5,"min_conf":0.97,"dx":1,"dy":0,"uptime_s":3600}` |
+
+`value` is present only when `ok` is true. `ok` is true for status `ok` and `reset`.
 
 ## Improving accuracy with real data
 

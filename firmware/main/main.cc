@@ -42,7 +42,7 @@ static void reading_task(void *) {
     Reading r = reader_read(cfg);
     ESP_LOGI(TAG, "%s raw=%s value=%.3f min_conf=%.2f offset=(%d,%d)", r.status.c_str(),
              r.raw.c_str(), r.value, r.min_conf, r.dx, r.dy);
-    mqtt_publish(reading_to_json(r, false));
+    mqtt_publish_reading(reading_to_json(r, false));
     {
       std::lock_guard<std::mutex> lock(s_mutex);
       s_last = std::move(r);
